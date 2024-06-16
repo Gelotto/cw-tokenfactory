@@ -6,7 +6,7 @@ use cosmwasm_std::{
     Uint64,
 };
 use storage::{
-    AMOUNT_BURNED, AMOUNT_MINTED, FACTORY, FULL_DENOM, INITIAL_BALANCES, MANAGER,
+    AMOUNT_BURNED, AMOUNT_MINTED, DENOM_METADATA, FACTORY, FULL_DENOM, INITIAL_BALANCES, MANAGER,
     MINT_REPLY_ID_COUNTER,
 };
 
@@ -14,10 +14,7 @@ use crate::{
     error::ContractError,
     execute::Context,
     msg::{InstantiateMsg, MintParams},
-    tf::{
-        cosmos::common::{DenomUnit, Metadata},
-        tokenfactory::TokenFactoryType,
-    },
+    tf::tokenfactory::TokenFactoryType,
 };
 
 pub const INITIAL_BALANCES_REPLY_ID: u64 = 0;
@@ -41,26 +38,7 @@ pub fn init(
         SubMsg::new(factory.create_denom(contract_addr.to_owned(), &subdenom)),
         SubMsg::new(factory.set_denom_metadata(
             contract_addr.to_owned(),
-            Metadata {
-                symbol: msg.metadata.symbol.to_owned(),
-                display: msg.metadata.symbol.to_owned(),
-                name: msg.metadata.name.to_owned(),
-                base: full_denom.to_owned(),
-                description: msg.metadata.description.to_owned().unwrap_or_default(),
-                uri: msg.metadata.uri.to_owned().unwrap_or_default(),
-                denom_units: vec![
-                    DenomUnit {
-                        aliases: vec![],
-                        denom: full_denom.clone(),
-                        exponent: 0,
-                    },
-                    DenomUnit {
-                        aliases: vec![],
-                        denom: msg.metadata.symbol.clone(),
-                        exponent: msg.metadata.decimals,
-                    },
-                ],
-            },
+            msg.metadata.to_denom_metadata(&full_denom),
         )),
     ];
 
@@ -104,6 +82,7 @@ pub fn init(
     MINT_REPLY_ID_COUNTER.save(deps.storage, &Uint64::from(INITIAL_MINT_REPLY_ID))?;
     AMOUNT_MINTED.save(deps.storage, &Uint256::zero())?;
     AMOUNT_BURNED.save(deps.storage, &Uint256::zero())?;
+    DENOM_METADATA.save(deps.storage, &msg.metadata)?;
 
     Ok(resp)
 }
