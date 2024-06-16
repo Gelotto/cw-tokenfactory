@@ -1,7 +1,9 @@
-mod set_config;
+pub mod burn;
+pub mod mint;
+pub mod set_denom_admin;
+pub mod set_denom_metadata;
 
 use cosmwasm_std::{DepsMut, Env, MessageInfo};
-pub use set_config::exec_set_config;
 
 pub struct Context<'a> {
     pub deps: DepsMut<'a>,

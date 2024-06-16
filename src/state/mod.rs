@@ -1,14 +1,124 @@
 pub mod models;
 pub mod storage;
 
-use cosmwasm_std::Response;
+use cosmwasm_std::{
+    BankMsg, Coin, DepsMut, Reply, Response, StdError, SubMsg, SubMsgResult, Uint128, Uint64,
+};
+use storage::{FACTORY, FULL_DENOM, INITIAL_BALANCES, MANAGER, MINT_REPLY_ID_COUNTER};
 
-use crate::{error::ContractError, execute::Context, msg::InstantiateMsg};
+use crate::{
+    error::ContractError,
+    execute::Context,
+    msg::{InstantiateMsg, MintParams},
+    tf::{
+        cosmos::common::{DenomUnit, Metadata},
+        tokenfactory::TokenFactoryType,
+    },
+};
+
+pub const INITIAL_BALANCES_REPLY_ID: u64 = 0;
+pub const INITIAL_MINT_REPLY_ID: u64 = 1_000_000u64;
 
 /// Top-level initialization of contract state
 pub fn init(
-    _ctx: Context,
-    _msg: &InstantiateMsg,
+    ctx: Context,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    Ok(Response::new().add_attribute("action", "instantiate"))
+    let Context { env, deps, .. } = ctx;
+    let subdenom = msg.metadata.symbol.to_lowercase();
+    let full_denom = format!("factory/{}/{}", env.contract.address, subdenom);
+    let contract_addr = env.contract.address;
+
+    let factory = msg
+        .factory
+        .unwrap_or_else(|| TokenFactoryType::from_chain_id(&env.block.chain_id));
+
+    let denom_msgs: Vec<SubMsg> = vec![
+        SubMsg::new(factory.create_denom(contract_addr.to_owned(), &subdenom)),
+        SubMsg::new(factory.set_denom_metadata(
+            contract_addr.to_owned(),
+            Metadata {
+                symbol: msg.metadata.symbol.to_owned(),
+                display: msg.metadata.symbol.to_owned(),
+                name: msg.metadata.name.to_owned(),
+                base: full_denom.to_owned(),
+                description: msg.metadata.description.to_owned().unwrap_or_default(),
+                uri: msg.metadata.uri.to_owned().unwrap_or_default(),
+                denom_units: vec![
+                    DenomUnit {
+                        aliases: vec![],
+                        denom: full_denom.clone(),
+                        exponent: 0,
+                    },
+                    DenomUnit {
+                        aliases: vec![],
+                        denom: msg.metadata.symbol.clone(),
+                        exponent: msg.metadata.decimals,
+                    },
+                ],
+            },
+        )),
+    ];
+
+    MANAGER.save(
+        deps.storage,
+        &(if let Some(manager) = msg.manager {
+            deps.api.addr_validate(manager.as_str())?
+        } else {
+            contract_addr.to_owned()
+        }),
+    )?;
+
+    let mut resp = Response::new()
+        .add_attribute("action", "instantiate")
+        .add_submessages(denom_msgs);
+
+    if let Some(initial_balances) = msg.initial_balances {
+        let mut total_initial_mint_amount = Uint128::zero();
+        for x in initial_balances.iter() {
+            total_initial_mint_amount += x.amount;
+            INITIAL_BALANCES.push_back(deps.storage, x)?;
+        }
+
+        resp = resp.add_submessage(SubMsg::reply_always(
+            factory.mint(
+                contract_addr.to_owned(),
+                full_denom.to_owned(),
+                total_initial_mint_amount,
+            ),
+            INITIAL_BALANCES_REPLY_ID,
+        ));
+    }
+
+    FULL_DENOM.save(deps.storage, &full_denom)?;
+    FACTORY.save(deps.storage, &factory)?;
+    MINT_REPLY_ID_COUNTER.save(deps.storage, &Uint64::from(INITIAL_MINT_REPLY_ID))?;
+
+    Ok(resp)
+}
+
+pub fn transfer_initial_balances(
+    deps: DepsMut,
+    reply: Reply,
+) -> Result<Response, ContractError> {
+    let mut send_msgs: Vec<SubMsg> = Vec::with_capacity(4);
+    match reply.result {
+        SubMsgResult::Ok(_) => {
+            let denom = FULL_DENOM.load(deps.storage)?;
+            let n = INITIAL_BALANCES.len(deps.storage)?;
+            for _ in 0..n {
+                let MintParams { amount, address } =
+                    INITIAL_BALANCES.pop_front(deps.storage)?.unwrap();
+                send_msgs.push(SubMsg::new(BankMsg::Send {
+                    to_address: address.to_string(),
+                    amount: vec![Coin::new(amount.into(), denom.to_owned())],
+                }))
+            }
+        },
+        SubMsgResult::Err(e) => {
+            return Err(ContractError::Std(StdError::generic_err(e.to_string())))
+        },
+    }
+
+    Ok(Response::new().add_submessages(send_msgs))
 }
