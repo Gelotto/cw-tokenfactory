@@ -2,9 +2,13 @@ pub mod models;
 pub mod storage;
 
 use cosmwasm_std::{
-    BankMsg, Coin, DepsMut, Reply, Response, StdError, SubMsg, SubMsgResult, Uint128, Uint64,
+    BankMsg, Coin, DepsMut, Reply, Response, StdError, SubMsg, SubMsgResult, Uint128, Uint256,
+    Uint64,
 };
-use storage::{FACTORY, FULL_DENOM, INITIAL_BALANCES, MANAGER, MINT_REPLY_ID_COUNTER};
+use storage::{
+    AMOUNT_BURNED, AMOUNT_MINTED, FACTORY, FULL_DENOM, INITIAL_BALANCES, MANAGER,
+    MINT_REPLY_ID_COUNTER,
+};
 
 use crate::{
     error::ContractError,
@@ -76,7 +80,12 @@ pub fn init(
     if let Some(initial_balances) = msg.initial_balances {
         let mut total_initial_mint_amount = Uint128::zero();
         for x in initial_balances.iter() {
-            total_initial_mint_amount += x.amount;
+            deps.api.addr_validate(x.address.as_str())?;
+
+            total_initial_mint_amount = total_initial_mint_amount
+                .checked_add(x.amount.into())
+                .map_err(|e| ContractError::Std(StdError::overflow(e)))?;
+
             INITIAL_BALANCES.push_back(deps.storage, x)?;
         }
 
@@ -93,6 +102,8 @@ pub fn init(
     FULL_DENOM.save(deps.storage, &full_denom)?;
     FACTORY.save(deps.storage, &factory)?;
     MINT_REPLY_ID_COUNTER.save(deps.storage, &Uint64::from(INITIAL_MINT_REPLY_ID))?;
+    AMOUNT_MINTED.save(deps.storage, &Uint256::zero())?;
+    AMOUNT_BURNED.save(deps.storage, &Uint256::zero())?;
 
     Ok(resp)
 }
@@ -106,14 +117,26 @@ pub fn transfer_initial_balances(
         SubMsgResult::Ok(_) => {
             let denom = FULL_DENOM.load(deps.storage)?;
             let n = INITIAL_BALANCES.len(deps.storage)?;
+            let mut total_amount = Uint256::zero();
+
             for _ in 0..n {
                 let MintParams { amount, address } =
                     INITIAL_BALANCES.pop_front(deps.storage)?.unwrap();
+
+                total_amount = total_amount
+                    .checked_add(amount.into())
+                    .map_err(|e| ContractError::Std(StdError::overflow(e)))?;
+
                 send_msgs.push(SubMsg::new(BankMsg::Send {
                     to_address: address.to_string(),
                     amount: vec![Coin::new(amount.into(), denom.to_owned())],
                 }))
             }
+
+            AMOUNT_MINTED.update(deps.storage, |n| -> Result<_, ContractError> {
+                Ok(n.checked_add(total_amount)
+                    .map_err(|e| ContractError::Std(StdError::overflow(e)))?)
+            })?;
         },
         SubMsgResult::Err(e) => {
             return Err(ContractError::Std(StdError::generic_err(e.to_string())))

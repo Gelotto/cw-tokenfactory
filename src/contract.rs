@@ -1,10 +1,13 @@
 use crate::error::ContractError;
 use crate::execute::burn::exec_burn;
 use crate::execute::mint::{exec_mint, transfer_minted_coins};
+use crate::execute::remove_denom_admin::exec_remove_denom_admin;
 use crate::execute::set_denom_admin::exec_set_denom_admin;
 use crate::execute::set_denom_metadata::exec_set_denom_metadata;
+use crate::execute::set_manager::exec_set_manager;
 use crate::execute::Context;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::query::info::query_info;
 use crate::query::{query_config, ReadonlyContext};
 use crate::state::storage::MANAGER;
 use crate::state::{
@@ -48,6 +51,8 @@ pub fn execute(
     match msg {
         ExecuteMsg::SetDenomMetadata { metadata } => exec_set_denom_metadata(ctx, metadata),
         ExecuteMsg::SetDenomAdmin { address } => exec_set_denom_admin(ctx, address),
+        ExecuteMsg::RemoveDenomAdmin {} => exec_remove_denom_admin(ctx),
+        ExecuteMsg::SetManager { address } => exec_set_manager(ctx, address),
         ExecuteMsg::Mint { recipient, amount } => exec_mint(ctx, recipient, amount),
         ExecuteMsg::Burn { amount } => exec_burn(ctx, amount),
     }
@@ -80,6 +85,7 @@ pub fn query(
     let ctx = ReadonlyContext { deps, env };
     let result = match msg {
         QueryMsg::Config {} => to_json_binary(&query_config(ctx)?),
+        QueryMsg::Info {} => to_json_binary(&query_info(ctx)?),
     }?;
     Ok(result)
 }

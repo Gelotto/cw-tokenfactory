@@ -15,6 +15,7 @@ pub enum TokenFactoryType {
     Osmosis = 4,
     Juno = 5,
 }
+
 impl Display for TokenFactoryType {
     fn fmt(
         &self,
@@ -48,7 +49,7 @@ impl TokenFactoryType {
     pub fn from_chain_id(chain_id: &String) -> Self {
         match chain_id.as_str() {
             "juno-1" | "testing" => Self::Juno,
-            "osmosis-1" => Self::Osmosis,
+            "osmosis-1" | "stargaze-1" => Self::Osmosis,
             "injective-1" => Self::Injective,
             "kujira-1" => Self::Kujira,
             _ => Self::CosmWasm,

@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 
 use crate::{
     state::models::Config,
@@ -33,13 +33,16 @@ pub struct MintParams {
 pub enum ExecuteMsg {
     Mint { recipient: Addr, amount: Uint128 },
     Burn { amount: Uint128 },
+    SetManager { address: Addr },
     SetDenomMetadata { metadata: Metadata },
     SetDenomAdmin { address: Addr },
+    RemoveDenomAdmin {},
 }
 
 #[cw_serde]
 pub enum QueryMsg {
     Config {},
+    Info {},
 }
 
 #[cw_serde]
@@ -47,3 +50,16 @@ pub struct MigrateMsg {}
 
 #[cw_serde]
 pub struct ConfigResponse(pub Config);
+
+#[cw_serde]
+pub struct ContractStats {
+    pub amount_burned: Uint256,
+    pub amount_minted: Uint256,
+}
+
+#[cw_serde]
+pub struct InfoResponse {
+    pub denom: String,
+    pub metadata: Metadata,
+    pub stats: ContractStats,
+}

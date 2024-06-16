@@ -1,4 +1,5 @@
-mod config;
+pub mod config;
+pub mod info;
 
 pub use config::query_config;
 use cosmwasm_std::{Deps, Env};
