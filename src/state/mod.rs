@@ -25,7 +25,7 @@ pub fn init(
     ctx: Context,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    let Context { env, deps, .. } = ctx;
+    let Context { env, deps, info } = ctx;
     let subdenom = msg.metadata.symbol.to_lowercase();
     let full_denom = format!("factory/{}/{}", env.contract.address, subdenom);
     let contract_addr = env.contract.address;
@@ -47,7 +47,7 @@ pub fn init(
         &(if let Some(manager) = msg.manager {
             deps.api.addr_validate(manager.as_str())?
         } else {
-            contract_addr.to_owned()
+            info.sender.to_owned()
         }),
     )?;
 
